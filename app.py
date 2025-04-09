@@ -7,41 +7,53 @@ app = Flask(__name__)
 # 加载模型
 model = joblib.load("recommendation_model.pkl")
 
-# 需要的字段（顺序要和训练时一致）
+# 模型所需字段
 required_features = [
     'family_size', 'total_income', 'requested_amount',
     'total_received_amount', 'request_receive_ratio', 'is_OKU'
 ]
 
 @app.route('/')
-def index():
-    return "✅ Recommendation Model API is running!"
-
+def home():
+    return "✅ Flask API is running."
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        # 从请求中提取 JSON
-        data = request.get_json()
+        input_data = request.get_json()
+
+        # 单条 → 包装为列表
+        if isinstance(input_data, dict):
+            input_data = [input_data]
 
         # 自动计算 ratio
-        total_received = max(data['total_received_amount'], 1)  # 避免除以0
-        data['request_receive_ratio'] = data['requested_amount'] / total_received
+        for item in input_data:
+            total_received = max(item.get('total_received_amount', 1), 1)
+            item['request_receive_ratio'] = item['requested_amount'] / total_received
 
         # 创建 DataFrame
-        df = pd.DataFrame([data], columns=required_features)
+        df = pd.DataFrame(input_data)
 
-        # 预测
-        prediction = int(model.predict(df)[0])
+        # 检查字段是否完整
+        for col in required_features:
+            if col not in df.columns:
+                return jsonify({"error": f"Missing column: {col}"}), 400
 
-        return jsonify({
-            "priority_class": prediction,
-            "message": "✅ Prediction success"
-        })
+        # 模型预测
+        predictions = model.predict(df[required_features])
+        df['predicted_class'] = predictions
+
+        # 获取 name 和 predicted_class
+        result = df[['name', 'predicted_class']]
+
+        # 排序（1 优先，0 第二，-1 最后）
+        result = result.sort_values(by='predicted_class', ascending=False)
+
+        # 转成 JSON 列表返回
+        return jsonify(result.to_dict(orient='records'))
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), 500
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000)
-
