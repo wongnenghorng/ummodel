@@ -1,13 +1,14 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import pandas as pd
 import joblib
 
 app = Flask(__name__)
+CORS(app)  # ✅ 启用 CORS
 
 # 加载模型
 model = joblib.load("recommendation_model.pkl")
 
-# 模型所需字段
 required_features = [
     'family_size', 'total_income', 'requested_amount',
     'total_received_amount', 'request_receive_ratio', 'is_OKU'
@@ -16,6 +17,7 @@ required_features = [
 @app.route('/')
 def home():
     return "✅ Flask API is running."
+
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
@@ -42,18 +44,13 @@ def predict():
         predictions = model.predict(df[required_features])
         df['predicted_class'] = predictions
 
-        # 获取 name 和 predicted_class
         result = df[['name', 'predicted_class']]
-
-        # 排序（1 优先，0 第二，-1 最后）
         result = result.sort_values(by='predicted_class', ascending=False)
 
-        # 转成 JSON 列表返回
         return jsonify(result.to_dict(orient='records'))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000)
